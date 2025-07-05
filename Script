@@ -1,0 +1,28 @@
+#Script Content
+Clear-Host
+try {
+    $spAssembly = [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SharePoint')
+    $spFarmType = $spAssembly.GetType('Microsoft.SharePoint.Administration.SPFarm')
+    $farm = $spFarmType::Local
+    $bindingFlags = [System.Reflection.BindingFlags]::NonPublic -bor `
+                    [System.Reflection.BindingFlags]::Instance -bor `
+                    [System.Reflection.BindingFlags]::GetProperty
+    $propInfo = $spFarmType.GetProperty("StoredFarmEncryptionKey", $bindingFlags)
+    $storedKey = $propInfo.GetValue($farm, $null)
+    Write-Host "`nSuccessfully retrieved StoredFarmEncryptionKey"
+    $spCredentialManagerType = $spAssembly.GetType('Microsoft.SharePoint.Administration.SPCredentialManager')
+    $decryptMethod = $spCredentialManagerType.GetMethod(
+        "DecryptWithRegistryPassphraseKey",
+        [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Static,
+        $null,
+        [Type[]]@([byte[]], $spFarmType),
+        $null
+    )
+    Write-Host "`nTrying to decrypt StoredFarmEncryptionKey with MasterKey from the server's registry..."
+    $decryptedBytes = $decryptMethod.Invoke($null, @($storedKey, $farm))
+    $hex = ($decryptedBytes | ForEach-Object { $_.ToString("X2") }) -join ''
+    Write-Host "`nDecryption Successful. Hex format: $hex. `n`nThe decryption was successful suggesting that MasterKey on server and StoredFarmEncryptionKey of the farm are connected/In sync.`n`n"
+} catch {
+    Write-Host "`n[ERROR]." -ForegroundColor Red
+    $_.Exception | Format-List -Force
+}
